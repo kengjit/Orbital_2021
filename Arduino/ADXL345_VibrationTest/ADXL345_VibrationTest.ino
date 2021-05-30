@@ -38,8 +38,6 @@ bool is_vibrating(int diffX, int diffY, int diffZ)
 void setup()
 {
   Serial.begin(115200);                 // Start the serial terminal
-  Serial.println("SparkFun ADXL345 Accelerometer Breakout Calibration");
-  Serial.println();
 
   adxl.powerOn();                     // Power on the ADXL345
 
