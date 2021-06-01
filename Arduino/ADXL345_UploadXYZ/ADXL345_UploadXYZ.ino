@@ -22,12 +22,22 @@ int diffX = 0;
 int diffY = 0;
 int diffZ = 0;
 
+int vib_count = 0;
+int quadrant_count = 0;
+
 time_t t;
 /************** DEFINED VARIABLES **************/
 /*                                             */
-#define ThresholdX 10
-#define ThresholdY 70
-#define ThresholdZ 240
+#define ThresholdX 20
+#define ThresholdY 80
+#define ThresholdZ 280
+
+/************** FUNCTIONS **********************/
+/*                                             */
+bool is_vibrating(int diffX, int diffY, int diffZ)
+{
+  return (diffX > ThresholdX && diffY > ThresholdY && diffZ > ThresholdZ);
+}
 
 /************** NETWORK + AWS SETUP **************/
 /*                                             */
@@ -81,67 +91,91 @@ void setup() {
   }
 }
 
-/****************** MAIN CODE ******************/
-/*  Accelerometer Readings + Upload to AWS     */
+
+/********************* MAIN CODE ******************************/
+/*       Accelerometer Readings + Upload to AWS               */
 void loop() {
-  /****************** Accelerometer Readings ******************/
-  /*                                                          */
-  int x, y, z;                        // init variables hold results
-  int count = 0; // Number of Samples taken
-  // Reset Values
-  AccelMinX = 0;
-  AccelMaxX = 0;
-  AccelMinY = 0;
-  AccelMaxY = 0;
-  AccelMinZ = 0;
-  AccelMaxZ = 0;
-  while (count < 10000)
+  /************* Accelerometer Readings ************/
+  /*                                               */
+  int x, y, z;       // init variables hold results
+  t = now();         // init Time
+  static uint32_t previousTime = 0;
+  uint32_t currentTime = millis();
+
+  /*********  Triggers every 15 secs  *************/
+  /*                                              */
+  if ( currentTime - previousTime >= 15000)
   {
-    // Get the Accelerometer Readings
-    adxl.readAccel(&x, &y, &z);         // Read the accelerometer values and store them in variables declared above x,y,z
+    previousTime = currentTime;
+    quadrant_count++; //Increment Minute Counter
 
-    if (x < AccelMinX) AccelMinX = x;
-    if (x > AccelMaxX) AccelMaxX = x;
+    /************** Check for vibrations  *********/
+    /*                                            */
+    if (is_vibrating(diffX, diffY, diffZ))
+    {
+      vib_count++;
+    }
 
-    if (y < AccelMinY) AccelMinY = y;
-    if (y > AccelMaxY) AccelMaxY = y;
+    // Debugging
+    Serial.print("["); Serial.print(minute(t)); Serial.print(":"); Serial.print(second(t)); Serial.print("] ");
+    Serial.print(diffX); Serial.print("  "); Serial.print(diffY); Serial.print("  "); Serial.print(diffZ); Serial.print("  VC:"); Serial.print(vib_count); Serial.print("  QC:"); Serial.print(quadrant_count);
+    Serial.println();
 
-    if (z < AccelMinZ) AccelMinZ = z;
-    if (z > AccelMaxZ) AccelMaxZ = z;
+    /*********  Triggers every 1 minute  *************/
+    /*                                               */
+    if (quadrant_count == 4)
+    {
+      if (vib_count == 4)
+      {
+        sprintf(payload, "1"); // Create the payload for publishing
+      }
+      else
+      {
+        sprintf(payload, "0"); // Create the payload for publishing
+      }
 
-    count++;
+      /*************** Upload to AWS ***************/
+      /*                                           */
+      if (hornbill.publish(TOPIC_NAME, payload) == 0) // Publish the message
+      {
+        Serial.print("Publish Message:");
+        Serial.println(payload);
+      }
+      else
+      {
+        Serial.println("Publish failed");
+      }
+      quadrant_count = 0;  // Reset minute counter
+      vib_count = 0;       // Reset vibration counter
+    }
+
+    /************** Reset Values  *****************/
+    /*                                            */
+    AccelMinX = 0;
+    AccelMaxX = 0;
+    AccelMinY = 0;
+    AccelMaxY = 0;
+    AccelMinZ = 0;
+    AccelMaxZ = 0;
   }
 
-  // Measure and Print Current time
-  t = now();
-  Serial.print("[");
-  Serial.print(hour(t));
-  Serial.print(":");
-  Serial.print(minute(t));
-  Serial.print(":");
-  Serial.print(second(t));
-  Serial.print("]  ");
+  /******************   Main Loop   ******************/
+  /*                                                 */
+  // Get the Accelerometer Readings
+  adxl.readAccel(&x, &y, &z);         // Read the accelerometer values and store them in variables declared above x,y,z
+
+  if (x < AccelMinX) AccelMinX = x;
+  if (x > AccelMaxX) AccelMaxX = x;
+
+  if (y < AccelMinY) AccelMinY = y;
+  if (y > AccelMaxY) AccelMaxY = y;
+
+  if (z < AccelMinZ) AccelMinZ = z;
+  if (z > AccelMaxZ) AccelMaxZ = z;
 
   // Calculating Difference in Values for X, Y and Z
   diffX = AccelMaxX - AccelMinX;
   diffY = AccelMaxY - AccelMinY;
   diffZ = AccelMaxZ - AccelMinZ;
-
-
-  /****************** Upload to AWS ******************/
-  /*                                                 */
-  sprintf(payload, "{[%i:%i:%i], \"X\":%i, \"Y\":%i, \"Z\":%i}", hour(t), minute(t), second(t), diffX, diffY, diffZ); // Create the payload for publishing
-
-  if (hornbill.publish(TOPIC_NAME, payload) == 0) // Publish the message(Temp and humidity)
-  {
-    Serial.print("Publish Message:");
-    Serial.println(payload);
-  }
-  else
-  {
-    Serial.println("Publish failed");
-  }
-  // publish the temp and humidity every 5 seconds.
-  vTaskDelay(5000 / portTICK_RATE_MS);
 
 }
