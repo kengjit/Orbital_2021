@@ -1,4 +1,4 @@
-#!/Users/jamesyak/Documents/NUS/Y1S2/CP2106/LaundroBot/venv/bin/python
+#!/Users/jamesyak/Documents/NUS/Y1S2/CP2106/Orbital_2021/Telebot/venv/bin/python
 # -*- coding: utf-8 -*-
 import re
 import sys

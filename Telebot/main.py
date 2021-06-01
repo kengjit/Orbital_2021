@@ -1,7 +1,8 @@
-import requests
-from telegram_menu import BaseMessage, TelegramMenuSession, NavigationHandler
+# Unused for now
+# import requests - for API calls
+# from telegram_menu import BaseMessage, TelegramMenuSession, NavigationHandler - other types of handlers
 
-import time
+import time, math
 from datetime import datetime, timedelta
 from telegram.ext import Updater, CommandHandler, MessageHandler, run_async
 
@@ -87,12 +88,13 @@ def start(update, context):
 def check(update, context):
     results = ""
     for appliance in range(4):
-        results += appliance_arr[appliance].get_name() + ": "
+        results += appliance_arr[appliance].get_name() + " "
         if (appliance_arr[appliance].is_available(datetime.now())):
             results += "is available." + "\n"
         else:
-            time_remaining = appliance_arr[appliance].get_next_available_time() - datetime.now()
-            results += "is unavailable. Available in " + time_remaining + " min" + "\n"
+            time_remaining_seconds = (appliance_arr[appliance].get_next_available_time() - datetime.now()).total_seconds()
+            time_remaining_minutes = math.ceil(time_remaining_seconds / 60)
+            results += "is unavailable. Available in " + str(time_remaining_minutes) + " min" + "\n"
     context.bot.send_message(chat_id = update.effective_chat.id, text = results)
 
 # Schedule reminder for specified appliance
@@ -104,18 +106,17 @@ def set_reminder(schedule_min, appliance, update, context):
 # Set reminder next time washer becomes available
 @run_async
 def washer(update, context):
-
     if (qr_washer.get_next_available_time() < coin_washer.get_next_available_time()):
         schedule_washer = qr_washer.get_name()
-        schedule_min = qr_washer.get_next_available_time()
+        schedule_min = math.ceil((qr_washer.get_next_available_time() - datetime.now()).total_seconds() / 60)
     elif (coin_washer.get_next_available_time() < qr_washer.get_next_available_time()):
         schedule_washer = coin_washer.get_name()
-        schedule_min = coin_washer.get_next_available_time()
+        schedule_min = math.ceil((coin_washer.get_next_available_time() - datetime.now()).total_seconds() / 60)
     else:
         schedule_washer = both_washers.get_name()
-        schedule_min = qr_washer.get_next_available_time()
+        schedule_min = math.ceil((qr_washer.get_next_available_time() - datetime.now()).total_seconds() / 60)
 
-    if (schedule_min != 0):
+    if (schedule_min > 0):
         context.bot.send_message(chat_id = update.effective_chat.id,
                              text = schedule_washer + " will be available in " + str(schedule_min) + " min. Setting a reminder.")
         set_reminder(schedule_min, appliance = schedule_washer, update = update, context = context)
@@ -126,18 +127,17 @@ def washer(update, context):
 # Set reminder next time dryer becomes available
 @run_async
 def dryer(update, context):
-
     if (qr_dryer.get_next_available_time() < coin_dryer.get_next_available_time()):
         schedule_dryer = qr_dryer.get_name()
-        schedule_min = qr_dryer.get_next_available_time()
+        schedule_min = math.ceil((qr_dryer.get_next_available_time() - datetime.now()).total_seconds() / 60)
     elif (coin_dryer.get_next_available_time() < qr_dryer.get_next_available_time()):
         schedule_dryer = coin_dryer.get_name()
-        schedule_min = coin_dryer.get_next_available_time()
+        schedule_min = math.ceil((coin_dryer.get_next_available_time() - datetime.now()).total_seconds() / 60)
     else:
         schedule_dryer = both_dryers.get_name()
-        schedule_min = qr_dryer.get_next_available_time()
+        schedule_min = math.ceil((qr_dryer.get_next_available_time() - datetime.now()).total_seconds() / 60)
 
-    if (schedule_min != 0):
+    if (schedule_min > 0):
         context.bot.send_message(chat_id = update.effective_chat.id,
                              text = schedule_dryer + " will be available in " + str(schedule_min) + " min. Setting a reminder.")
         set_reminder(schedule_min, appliance = schedule_dryer, update = update, context = context)
