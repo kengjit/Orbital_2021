@@ -4,9 +4,10 @@
 
 import time, math
 from datetime import datetime, timedelta
-from telegram.ext import Updater, CommandHandler, MessageHandler, run_async
+from telegram.ext import Updater, CommandHandler, MessageHandler, run_async, Filters
+import paho.mqtt.client as mqtt
 
-# Setting up logger
+# Configuring Logger
 import logging
 logging.basicConfig(format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s',level = logging.INFO)
 
@@ -16,6 +17,7 @@ TOKEN = "1840357751:AAFe-yBkxyMjh1-qF6PaSxsjV2LWooFpjnU"
 updater = Updater(token = TOKEN, use_context = True)
 dispatcher = updater.dispatcher
 
+# Superclass of Dryer and Washer
 class Appliance():
 
     def __init__(self, name, start_time = datetime(2021, 1, 1, 0, 0, 0)):
@@ -30,7 +32,7 @@ class Appliance():
 
 # A subclass of appliance
 class Dryer(Appliance):
-    DRY_CYCLE = timedelta(minutes = 40)
+    DRY_CYCLE = timedelta(minutes = 4)
 
     def __init__(self, name, start_time = datetime(2021, 1, 1, 0, 0, 0)):
         super(Dryer, self).__init__(name, start_time)
@@ -43,7 +45,7 @@ class Dryer(Appliance):
 
 # A subclass of appliance
 class Washer(Appliance):
-    WASH_CYCLE = timedelta(minutes = 30)
+    WASH_CYCLE = timedelta(minutes = 3)
 
     def __init__(self, name, start_time = datetime(2021, 1, 1, 0, 0, 0)):
         super(Washer, self).__init__(name, start_time)
@@ -60,6 +62,7 @@ qr_dryer = Dryer("QR Dryer")
 qr_washer = Washer("QR Washer")
 coin_washer = Washer("Coin Washer")
 
+# Convenient way of naming
 both_dryers = Dryer("Both dryers")
 both_washers = Washer("Both washers")
 
@@ -68,8 +71,62 @@ appliance_arr = [coin_dryer, qr_dryer, qr_washer, coin_washer]
 
 # Specifying availability
 # ESP32 will perform this in the future
-coin_washer.start_time = datetime.now() - timedelta(minutes = 20)
-qr_washer.start_time = datetime.now() - timedelta(minutes = 23)
+# coin_washer.start_time = datetime.now() - timedelta(minutes = 1)
+# qr_washer.start_time = datetime.now() - timedelta(minutes = 2)
+
+# New Code
+# What happens when a message is received
+def on_message(client, userdata, message):
+    # print("Topic:", message.topic)
+    msg = str(message.payload.decode("utf-8"))
+    print("Message Received:", msg)
+
+    # Splitting message for each appliance
+    coin_dryer_status = int(msg[0])
+    qr_dryer_status = int(msg[1])
+    qr_washer_status = int(msg[2])
+    coin_washer_status = int(msg[3])
+
+    if coin_dryer_status == 1:
+        coin_dryer.start_time = datetime.now()
+    if qr_dryer_status == 1:
+        qr_dryer.start_time = datetime.now()
+    if qr_washer_status == 1:
+        qr_washer.start_time = datetime.now()
+    if coin_washer_status == 1:
+        coin_washer.start_time = datetime.now()
+
+# Logging connection status
+def on_connect(client, userdata, flags, rc):
+    if rc == 0:
+        client.connected_flag = True
+        print("Log:", "Connection successful")
+    else:
+        print("Log:", "Bad connection. Returned code:", rc)
+
+broker_address = "broker.emqx.io"
+topic = "laundrobot"
+client_id = "sub"
+
+client = mqtt.Client(client_id)
+client.on_message = on_message
+client.on_connect = on_connect
+
+@run_async
+def start_client():
+    print("Log:", "Connecting to broker")
+    client.connected_flag = False
+    client.connect(broker_address)
+    while client.connected_flag:
+        print("Log:", "waiting")
+        time.sleep(1)
+
+    client.loop_start()
+    topic = "laundrobot"
+    print("Log:", "Subscribing to topic", topic)
+    client.subscribe(topic)
+
+start_client()
 
 # Functions to handle each commands
 # Additional features: method to cancel reminder queue? option to set reminder X min in advance
@@ -145,6 +202,35 @@ def dryer(update, context):
         context.bot.send_message(chat_id = update.effective_chat.id,
                                  text = schedule_dryer + " available. No reminder will be set.")
 
+# Can add more stuff if needed
+# To change the status of appliance by messaging the bot
+def status(update, context):
+    msg = update.message.text
+
+    # check 4 digit number
+    if (len(msg) == 4 and int(msg) <= 1111):
+        coin_dryer_status = int(msg[0])
+        qr_dryer_status = int(msg[1])
+        qr_washer_status = int(msg[2])
+        coin_washer_status = int(msg[3])
+
+        if coin_dryer_status == 1:
+            coin_dryer.start_time = datetime.now()
+        if qr_dryer_status == 1:
+            qr_dryer.start_time = datetime.now()
+        if qr_washer_status == 1:
+            qr_washer.start_time = datetime.now()
+        if coin_washer_status == 1:
+            coin_washer.start_time = datetime.now()
+
+    # reset timers
+    if msg == "reset status":
+        coin_dryer.start_time = datetime.now() - coin_dryer.DRY_CYCLE
+        qr_dryer.start_time = datetime.now() - qr_dryer.DRY_CYCLE
+        qr_washer.start_time = datetime.now() - qr_washer.WASH_CYCLE
+        coin_washer.start_time = datetime.now() - coin_washer.WASH_CYCLE
+
+
 # Create and add command handlers
 start_handler = CommandHandler("start", start)
 dispatcher.add_handler(start_handler)
@@ -157,6 +243,9 @@ dispatcher.add_handler(washer_handler)
 
 dryer_handler = CommandHandler("dryer", dryer)
 dispatcher.add_handler(dryer_handler)
+
+status_handler = MessageHandler(Filters.text & ~(Filters.command), status)
+dispatcher.add_handler(status_handler)
 
 # Start!
 updater.start_polling()
