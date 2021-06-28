@@ -11,7 +11,7 @@ import paho.mqtt.client as mqtt
 import logging
 logging.basicConfig(format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s',level = logging.INFO)
 
-TOKEN = "1840357751:AAFe-yBkxyMjh1-qF6PaSxsjV2LWooFpjnU"
+TOKEN = ""
 
 # Setting up polling
 updater = Updater(token = TOKEN, use_context = True)
@@ -20,41 +20,59 @@ dispatcher = updater.dispatcher
 # Superclass of Dryer and Washer
 class Appliance():
 
-    def __init__(self, name, start_time = datetime(2021, 1, 1, 0, 0, 0)):
+    def __init__(self, name, last_close_time = datetime.now() - timedelta(minutes = 40), last_open_time = datetime.now()):
         self.name = name
-        self.start_time = start_time
+        self.last_close_time = last_close_time
+        self.last_open_time = last_open_time
 
     def get_name(self):
         return self.name
 
-    def get_start_time(self):
-        return self.start_time
+    def get_last_close_time(self):
+        return self.last_close_time
+
+    def get_last_open_time(self):
+        return self.last_open_time
 
 # A subclass of appliance
 class Dryer(Appliance):
     DRY_CYCLE = timedelta(minutes = 4)
 
-    def __init__(self, name, start_time = datetime(2021, 1, 1, 0, 0, 0)):
-        super(Dryer, self).__init__(name, start_time)
+    def __init__(self, name, last_close_time = datetime.now() - timedelta(minutes = 40), last_open_time = datetime.now()):
+        super(Dryer, self).__init__(name, last_close_time, last_open_time)
 
-    def get_next_available_time(self):
-        return self.start_time + self.DRY_CYCLE
+    def status(self, query_time):
+        if (self.last_close_time < self.last_open_time) and (self.last_open_time < query_time):
+            return "available"
+        elif (self.last_open_time < self.last_close_time) and (self.last_close_time + self.DRY_CYCLE > query_time):
+            # time_remaining_seconds = (query_time - (self.last_close_time + self.DRY_CYCLE)).total_seconds()
+            # time_remaining_minutes = math.ceil(time_remaining_seconds / 60)
+            return "cycle"
+        elif (self.last_open_time < self.last_close_time) and (self.last_close_time + self.DRY_CYCLE < query_time):
+            return "waiting"
 
-    def is_available(self, query_time):
-        return self.get_next_available_time() < query_time
+    def get_cycle_complete_time(self):
+        return self.last_close_time + self.DRY_CYCLE
 
 # A subclass of appliance
 class Washer(Appliance):
     WASH_CYCLE = timedelta(minutes = 3)
 
-    def __init__(self, name, start_time = datetime(2021, 1, 1, 0, 0, 0)):
-        super(Washer, self).__init__(name, start_time)
+    def __init__(self, name, last_close_time = datetime.now() - timedelta(minutes = 30), last_open_time = datetime.now()):
+        super(Washer, self).__init__(name, last_close_time, last_open_time)
 
-    def get_next_available_time(self):
-        return self.start_time + self.WASH_CYCLE
+    def status(self, query_time):
+        if (self.last_close_time < self.last_open_time) and (self.last_open_time < query_time):
+            return "available"
+        elif (self.last_open_time < self.last_close_time) and (self.last_close_time + self.WASH_CYCLE > query_time):
+            # time_remaining_seconds = (query_time - (self.last_close_time + self.DRY_CYCLE)).total_seconds()
+            # time_remaining_minutes = math.ceil(time_remaining_seconds / 60)
+            return "cycle"
+        elif (self.last_open_time < self.last_close_time) and (self.last_close_time + self.WASH_CYCLE < query_time):
+            return "waiting"
 
-    def is_available(self, query_time):
-        return self.get_next_available_time() < query_time
+    def get_cycle_complete_time(self):
+        return self.last_close_time + self.WASH_CYCLE
 
 # Creating dryer and washer objects
 coin_dryer = Dryer("Coin Dryer")
@@ -62,39 +80,72 @@ qr_dryer = Dryer("QR Dryer")
 qr_washer = Washer("QR Washer")
 coin_washer = Washer("Coin Washer")
 
-# Convenient way of naming
-both_dryers = Dryer("Both dryers")
-both_washers = Washer("Both washers")
-
-# Placing dryers and washers in an array
 appliance_arr = [coin_dryer, qr_dryer, qr_washer, coin_washer]
 
-# Specifying availability
-# ESP32 will perform this in the future
-# coin_washer.start_time = datetime.now() - timedelta(minutes = 1)
-# qr_washer.start_time = datetime.now() - timedelta(minutes = 2)
+coin_dryer_notifications_queue = []
+qr_dryer_notifications_queue = []
+qr_washer_notifications_queue = []
+coin_washer_notifications_queue = []
 
-# New Code
-# What happens when a message is received
+# When a message is received
+@run_async
 def on_message(client, userdata, message):
     # print("Topic:", message.topic)
     msg = str(message.payload.decode("utf-8"))
-    print("Message Received @", datetime.now(), ":", msg)
+    print("Log: Message Received @", datetime.now(), ":", msg)
+
+    # Debugging purpose
+    # james_chat_id = 109550488
+    # updater.bot.send_message(chat_id = james_chat_id, text = msg)
 
     # Splitting message for each appliance
-    coin_dryer_status = int(msg[0])
-    qr_dryer_status = int(msg[1])
-    qr_washer_status = int(msg[2])
-    coin_washer_status = int(msg[3])
+    if len(str(msg)) == 2:
+        appliance_num = int(msg[0])
+        status = int(msg[1])
 
-    if coin_dryer_status == 1:
-        coin_dryer.start_time = datetime.now()
-    if qr_dryer_status == 1:
-        qr_dryer.start_time = datetime.now()
-    if qr_washer_status == 1:
-        qr_washer.start_time = datetime.now()
-    if coin_washer_status == 1:
-        coin_washer.start_time = datetime.now()
+        if appliance_num == 1:
+            if status == 1:
+                coin_dryer.last_close_time = datetime.now()
+            elif status == 0:
+                coin_dryer.last_open_time = datetime.now()
+                # Trigger reminder if needed
+                for i in coin_dryer_notifications_queue:
+                    msg = "Reminder: " + coin_dryer.get_name() + " is available."
+                    updater.bot.send_message(chat_id = i, text = msg)
+                coin_dryer_notifications_queue.clear()
+
+        elif appliance_num == 2:
+            if status == 1:
+                qr_dryer.last_close_time = datetime.now()
+            elif status == 0:
+                qr_dryer.last_open_time = datetime.now()
+                # Trigger reminder if needed
+                for i in qr_dryer_notifications_queue:
+                    msg = "Reminder: " + qr_dryer.get_name() + " is available."
+                    updater.bot.send_message(chat_id = i, text = msg)
+                qr_dryer_notifications_queue.clear()
+
+        elif appliance_num == 3:
+            if status == 1:
+                qr_washer.last_close_time = datetime.now()
+            elif status == 0:
+                qr_washer.last_open_time = datetime.now()
+                # Trigger reminder if needed
+                for i in qr_washer_notifications_queue:
+                    msg = "Reminder: " + qr_washer.get_name() + " is available."
+                    updater.bot.send_message(chat_id = i, text = msg)
+                qr_washer_notifications_queue.clear()
+
+        elif appliance_num == 4:
+            if status == 1:
+                coin_washer.last_close_time = datetime.now()
+            elif status == 0:
+                coin_washer.last_open_time = datetime.now()
+                # Trigger reminder if needed
+                for i in coin_washer_notifications_queue:
+                    msg = "Reminder: " + coin_washer.get_name() + " is available."
+                    updater.bot.send_message(chat_id = i, text = msg)
+                coin_washer_notifications_queue.clear()
 
 # Logging connection status
 def on_connect(client, userdata, flags, rc):
@@ -125,7 +176,6 @@ def start_client():
     topic = "laundrobot"
     print("Log:", "Subscribing to topic", topic)
     client.subscribe(topic)
-
 start_client()
 
 # Functions to handle each commands
@@ -135,141 +185,252 @@ start_client()
 
 # Display start message
 def start(update, context):
+    print("Log: Chat ID:", str(update.effective_chat.id), "started")
     context.bot.send_message(chat_id = update.effective_chat.id,
                              text = "Hey, I'm LaundroBot! How can I help you? Here are the commands to interact with me: "
                              + "\n" + "\n"
-                             + "To check washer/dryer availability status: /check"
+                             + "To check washer/dryer status: /check"
                              + "\n" + "\n"
-                             + "To remind when 💦 becomes available:"
+                             + "To remind when 💦 cycle is completed:"
+                             + "\n" + "Any washer: /washercycle"
+                             + "\n" + "QR washer: /qrwashercycle"
+                             + "\n" + "Coin washer: /coinwashercycle"
+                             + "\n" + "\n"
+                             + "To remind when 💦 is available:"
                              + "\n" + "Any washer: /washer"
                              + "\n" + "QR washer: /qrwasher"
                              + "\n" + "Coin washer: /coinwasher"
                              + "\n" + "\n"
-                             + "To remind when 🔥 becomes available:"
+                             + "To remind when 🔥 cycle is completed:"
+                             + "\n" + "Any dryer: /dryercycle"
+                             + "\n" + "QR dryer: /qrdryercycle"
+                             + "\n" + "Coin dryer: /coindryercycle"
+                             + "\n" + "\n"
+                             + "To remind when 🔥 cycle is available:"
                              + "\n" + "Any dryer: /dryer"
                              + "\n" + "QR dryer: /qrdryer"
                              + "\n" + "Coin dryer: /coindryer")
 
 # Run through array and display availability
 def check(update, context):
-    results = ""
+    print("Log: Chat ID:", str(update.effective_chat.id), "checked")
+    results = "✅: Available\n💦: Washing Cycle\n🔥: Drying Cycle\n❌: Uncollected Laundry\n\n"
     for appliance in range(4):
-        results += appliance_arr[appliance].get_name() + " "
-        if (appliance_arr[appliance].is_available(datetime.now())):
-            results += "is available." + "\n"
-        else:
-            time_remaining_seconds = (appliance_arr[appliance].get_next_available_time() - datetime.now()).total_seconds()
+        results += appliance_arr[appliance].get_name() + ": "
+        if (appliance_arr[appliance].status(datetime.now()) == "available"):
+            results += "✅" + "\n"
+        elif (appliance_arr[appliance].status(datetime.now()) == "cycle"):
+            time_remaining_seconds = (appliance_arr[appliance].get_cycle_complete_time() - datetime.now()).total_seconds()
             time_remaining_minutes = math.ceil(time_remaining_seconds / 60)
-            results += "is unavailable. Available in " + str(time_remaining_minutes) + " min" + "\n"
+
+            if appliance == 0 or appliance == 1:
+                results += "🔥 "
+            elif appliance == 2 or appliance == 3:
+                results += "💦 "
+            results += "Cycle: " + str(time_remaining_minutes) + " min left." + "\n"
+        elif (appliance_arr[appliance].status(datetime.now()) == "waiting"):
+            results += "❌" + "\n"
+
     context.bot.send_message(chat_id = update.effective_chat.id, text = results)
 
-# Schedule reminder for specified appliance
-def set_reminder(schedule_min, appliance, update, context):
-    time.sleep(schedule_min * 60)
+# Schedule reminder for specified appliance when laundry cycle is completed
+def reminder_cycle(schedule_sec, appliance, update, context):
+    time.sleep(schedule_sec)
     context.bot.send_message(chat_id = update.effective_chat.id,
-                         text = "Reminder: " + appliance + " available.")
+                         text = "Reminder: " + appliance + " laundry cycle completed.")
 
-# Set reminder next time ANY washer becomes available
+# Schedule reminder for specified appliance when it is available
+def reminder_available(chat_id, appliance, update, context):
+    context.bot.send_message(chat_id = chat_id,
+                         text = "Reminder: " + appliance + " is available.")
+
+# Set reminder next time ANY washer cycle is completed
 @run_async
-def remind_washer(update, context):
-    if (qr_washer.get_next_available_time() < coin_washer.get_next_available_time()):
+def remind_washer_cycle(update, context):
+    print("Log: Chat ID:", str(update.effective_chat.id), "remind washer cycle")
+    if (qr_washer.get_cycle_complete_time() < coin_washer.get_cycle_complete_time()):
         schedule_washer = qr_washer.get_name()
-        schedule_min = math.ceil((qr_washer.get_next_available_time() - datetime.now()).total_seconds() / 60)
-    elif (coin_washer.get_next_available_time() < qr_washer.get_next_available_time()):
+        schedule_sec = (qr_washer.get_cycle_complete_time() - datetime.now()).total_seconds()
+        schedule_min = math.ceil(schedule_sec / 60)
+    elif (coin_washer.get_cycle_complete_time() < qr_washer.get_cycle_complete_time()):
         schedule_washer = coin_washer.get_name()
-        schedule_min = math.ceil((coin_washer.get_next_available_time() - datetime.now()).total_seconds() / 60)
+        schedule_sec = (coin_washer.get_cycle_complete_time() - datetime.now()).total_seconds()
+        schedule_min = math.ceil(schedule_sec / 60)
     else:
-        schedule_washer = both_washers.get_name()
-        schedule_min = math.ceil((qr_washer.get_next_available_time() - datetime.now()).total_seconds() / 60)
+        schedule_washer = "Both washers"
+        schedule_sec = (coin_washer.get_cycle_complete_time() - datetime.now()).total_seconds()
+        schedule_min = math.ceil(schedule_sec / 60)
 
     if (schedule_min > 0):
         context.bot.send_message(chat_id = update.effective_chat.id,
-                             text = schedule_washer + " will be available in " + str(schedule_min) + " min. Setting a reminder.")
-        set_reminder(schedule_min, appliance = schedule_washer, update = update, context = context)
+                             text = schedule_washer + " laundry cycle will be completed in " + str(schedule_min) + " min. Setting a reminder.")
+        reminder_cycle(schedule_sec, appliance = schedule_washer, update = update, context = context)
     else:
         context.bot.send_message(chat_id = update.effective_chat.id,
-                                 text = schedule_washer + " available. No reminder will be set.")
+                                 text = schedule_washer + " laundry cycles completed. No reminder will be set.")
 
-# Set reminder next time QR Washer becomes available
+# Set reminder next time QR Washer cycle is completed
 @run_async
-def remind_qr_washer(update, context):
+def remind_qr_washer_cycle(update, context):
+    print("Log: Chat ID:", str(update.effective_chat.id), "remind qr washer cycle")
     schedule_washer = qr_washer.get_name()
-    schedule_min = math.ceil((qr_washer.get_next_available_time() - datetime.now()).total_seconds() / 60)
+    schedule_sec = (qr_washer.get_cycle_complete_time() - datetime.now()).total_seconds()
+    schedule_min = math.ceil(schedule_sec / 60)
 
     if (schedule_min > 0):
         context.bot.send_message(chat_id = update.effective_chat.id,
-                             text = schedule_washer + " will be available in " + str(schedule_min) + " min. Setting a reminder.")
-        set_reminder(schedule_min, appliance = schedule_washer, update = update, context = context)
+                                 text = schedule_washer + " laundry cycle will be completed in " + str(schedule_min) + " min. Setting a reminder.")
+        reminder_cycle(schedule_sec, appliance = schedule_washer, update = update, context = context)
     else:
+        context.bot.send_message(chat_id=update.effective_chat.id,
+                                 text = schedule_washer + " laundry cycle completed. No reminder will be set.")
+
+# Set reminder next time Coin Washer cycle is completed
+@run_async
+def remind_coin_washer_cycle(update, context):
+    print("Log: Chat ID:", str(update.effective_chat.id), "remind coinwasher cycle")
+    schedule_washer = coin_washer.get_name()
+    schedule_sec = (coin_washer.get_cycle_complete_time() - datetime.now()).total_seconds()
+    schedule_min = math.ceil(schedule_sec / 60)
+
+    if (schedule_min > 0):
+        context.bot.send_message(chat_id = update.effective_chat.id,
+                                 text = schedule_washer + " cycle will be completed in " + str(schedule_min) + " min. Setting a reminder.")
+        reminder_cycle(schedule_sec, appliance = schedule_washer, update = update, context = context)
+    else:
+        context.bot.send_message(chat_id = update.effective_chat.id,
+                                 text = schedule_washer + " cycle completed. No reminder will be set.")
+
+# Set reminder next time ANY dryer cycle is completed
+@run_async
+def remind_dryer_cycle(update, context):
+
+    if (qr_dryer.get_cycle_complete_time() < coin_dryer.get_cycle_complete_time()):
+        schedule_dryer = qr_dryer.get_name()
+        schedule_sec = (qr_dryer.get_cycle_complete_time() - datetime.now()).total_seconds()
+        schedule_min = math.ceil(schedule_sec / 60)
+    elif (coin_dryer.get_cycle_complete_time() < qr_dryer.get_cycle_complete_time()):
+        schedule_dryer = coin_dryer.get_name()
+        schedule_sec = (coin_dryer.get_cycle_complete_time() - datetime.now()).total_seconds()
+        schedule_min = math.ceil(schedule_sec / 60)
+    else:
+        schedule_dryer = "Both dryers"
+        schedule_sec = (coin_dryer.get_cycle_complete_time() - datetime.now()).total_seconds()
+        schedule_min = math.ceil(schedule_sec / 60)
+
+    if (schedule_min > 0):
+        context.bot.send_message(chat_id = update.effective_chat.id,
+                             text = schedule_dryer + " laundry cycle will be completed in " + str(schedule_min) + " min. Setting a reminder.")
+        reminder_cycle(schedule_sec, appliance = schedule_dryer, update = update, context = context)
+    else:
+        context.bot.send_message(chat_id = update.effective_chat.id,
+                                 text = schedule_dryer + " laundry cycles completed. No reminder will be set.")
+
+# Set reminder next time QR Dryer cycle is completed
+@run_async
+def remind_qr_dryer_cycle(update, context):
+    schedule_dryer = qr_dryer.get_name()
+    schedule_sec = (qr_dryer.get_cycle_complete_time() - datetime.now()).total_seconds()
+    schedule_min = math.ceil(schedule_sec / 60)
+
+    if (schedule_min > 0):
+        context.bot.send_message(chat_id = update.effective_chat.id,
+                                 text = schedule_dryer + " laundry cycle will be completed in " + str(schedule_min) + " min. Setting a reminder.")
+        reminder_cycle(schedule_sec, appliance = schedule_dryer, update = update, context = context)
+    else:
+        context.bot.send_message(chat_id = update.effective_chat.id,
+                                 text = schedule_dryer + " laundry cycle completed. No reminder will be set.")
+
+# Set reminder next time Coin Dryer cycle is completed
+@run_async
+def remind_coin_dryer_cycle(update, context):
+    schedule_dryer = coin_dryer.get_name()
+    schedule_sec = (coin_dryer.get_cycle_complete_time() - datetime.now()).total_seconds()
+    schedule_min = math.ceil(schedule_sec / 60)
+
+    if (schedule_min > 0):
+        context.bot.send_message(chat_id = update.effective_chat.id,
+                                 text = schedule_dryer + " laundry cycle will be completed in " + str(schedule_min) + " min. Setting a reminder.")
+        reminder_cycle(schedule_sec, appliance = schedule_dryer, update = update, context = context)
+    else:
+        context.bot.send_message(chat_id = update.effective_chat.id,
+                                 text = schedule_dryer + " laundry cycle completed. No reminder will be set.")
+
+# Set reminder next time ANY washer is available
+def remind_washer(update, context):
+    if qr_washer.status(datetime.now()) == "available" or coin_washer.status(datetime.now()) == "available":
+        schedule_washer = "Washer(s)"
         context.bot.send_message(chat_id = update.effective_chat.id,
                                  text = schedule_washer + " available. No reminder will be set.")
-
-# Set reminder next time Coin Washer becomes available
-@run_async
-def remind_coin_washer(update, context):
-    schedule_washer = coin_washer.get_name()
-    schedule_min = math.ceil((coin_washer.get_next_available_time() - datetime.now()).total_seconds() / 60)
-
-    if (schedule_min > 0):
-        context.bot.send_message(chat_id=update.effective_chat.id,
-                                 text=schedule_washer + " will be available in " + str(
-                                     schedule_min) + " min. Setting a reminder.")
-        set_reminder(schedule_min, appliance=schedule_washer, update=update, context=context)
     else:
-        context.bot.send_message(chat_id=update.effective_chat.id,
-                                 text=schedule_washer + " available. No reminder will be set.")
-
-# Set reminder next time ANY dryer becomes available
-@run_async
-def remind_dryer(update, context):
-    if (qr_dryer.get_next_available_time() < coin_dryer.get_next_available_time()):
-        schedule_dryer = qr_dryer.get_name()
-        schedule_min = math.ceil((qr_dryer.get_next_available_time() - datetime.now()).total_seconds() / 60)
-    elif (coin_dryer.get_next_available_time() < qr_dryer.get_next_available_time()):
-        schedule_dryer = coin_dryer.get_name()
-        schedule_min = math.ceil((coin_dryer.get_next_available_time() - datetime.now()).total_seconds() / 60)
-    else:
-        schedule_dryer = both_dryers.get_name()
-        schedule_min = math.ceil((qr_dryer.get_next_available_time() - datetime.now()).total_seconds() / 60)
-
-    if (schedule_min > 0):
+        if qr_washer_notifications_queue.count(update.effective_chat.id) < 1:
+            qr_washer_notifications_queue.append(update.effective_chat.id)
+        if coin_washer_notifications_queue.count(update.effective_chat.id) < 1:
+            coin_washer_notifications_queue.append(update.effective_chat.id)
         context.bot.send_message(chat_id = update.effective_chat.id,
-                             text = schedule_dryer + " will be available in " + str(schedule_min) + " min. Setting a reminder.")
-        set_reminder(schedule_min, appliance = schedule_dryer, update = update, context = context)
+                                 text = "Laundrobot will alert you when any washer is available.")
+
+# Set reminder next time qr washer is available
+def remind_qr_washer(update, context):
+    if qr_washer.status(datetime.now()) == "available":
+        schedule_washer = qr_washer.get_name()
+        context.bot.send_message(chat_id = update.effective_chat.id,
+                                 text = schedule_washer + " available. No reminder will be set.")
     else:
+        if qr_washer_notifications_queue.count(update.effective_chat.id) < 1:
+            qr_washer_notifications_queue.append(update.effective_chat.id)
+        context.bot.send_message(chat_id = update.effective_chat.id,
+                                 text = "Laundrobot will alert you when QR Washer is available.")
+
+# Set reminder next time coin washer is available
+def remind_coin_washer(update, context):
+    if  coin_washer.status(datetime.now()) == "available":
+        schedule_washer = coin_washer.get_name()
+        context.bot.send_message(chat_id = update.effective_chat.id,
+                                 text = schedule_washer + " available. No reminder will be set.")
+    else:
+        if coin_washer_notifications_queue.count(update.effective_chat.id) < 1:
+            coin_washer_notifications_queue.append(update.effective_chat.id)
+        context.bot.send_message(chat_id = update.effective_chat.id,
+                                 text = "Laundrobot will alert you when Coin Washer is available.")
+
+# Set reminder next time ANY dryer is available
+def remind_dryer(update, context):
+    if qr_dryer.status(datetime.now()) == "available" or coin_dryer.status(datetime.now()) == "available":
+        schedule_dryer = "Dryer(s)"
         context.bot.send_message(chat_id = update.effective_chat.id,
                                  text = schedule_dryer + " available. No reminder will be set.")
+    else:
+        if qr_dryer_notifications_queue.count(update.effective_chat.id) < 1:
+            qr_dryer_notifications_queue.append(update.effective_chat.id)
+        if coin_dryer_notifications_queue.count(update.effective_chat.id) < 1:
+            coin_dryer_notifications_queue.append(update.effective_chat.id)
+        context.bot.send_message(chat_id = update.effective_chat.id,
+                                 text = "Laundrobot will alert you when any dryer is available.")
 
-# Set reminder next time QR Dryer becomes available
-@run_async
+# Set reminder next time qr dryer is available
 def remind_qr_dryer(update, context):
-    schedule_dryer = qr_dryer.get_name()
-    schedule_min = math.ceil((qr_dryer.get_next_available_time() - datetime.now()).total_seconds() / 60)
-
-    if (schedule_min > 0):
-        context.bot.send_message(chat_id=update.effective_chat.id,
-                                 text=schedule_dryer + " will be available in " + str(
-                                     schedule_min) + " min. Setting a reminder.")
-        set_reminder(schedule_min, appliance=schedule_dryer, update=update, context=context)
+    if qr_dryer.status(datetime.now()) == "available":
+        schedule_dryer = qr_dryer.get_name()
+        context.bot.send_message(chat_id = update.effective_chat.id,
+                                 text = schedule_dryer + " available. No reminder will be set.")
     else:
-        context.bot.send_message(chat_id=update.effective_chat.id,
-                                 text=schedule_dryer + " available. No reminder will be set.")
+        if qr_dryer_notifications_queue.count(update.effective_chat.id) < 1:
+            qr_dryer_notifications_queue.append(update.effective_chat.id)
+        context.bot.send_message(chat_id = update.effective_chat.id,
+                                 text = "Laundrobot will alert you when QR Dryer is available.")
 
-# Set reminder next time Coin Dryer becomes available
-@run_async
+# Set reminder next time coin dryer is available
 def remind_coin_dryer(update, context):
-    schedule_dryer = coin_dryer.get_name()
-    schedule_min = math.ceil((coin_dryer.get_next_available_time() - datetime.now()).total_seconds() / 60)
-
-    if (schedule_min > 0):
-        context.bot.send_message(chat_id=update.effective_chat.id,
-                                 text=schedule_dryer + " will be available in " + str(
-                                     schedule_min) + " min. Setting a reminder.")
-        set_reminder(schedule_min, appliance=schedule_dryer, update=update, context=context)
+    if coin_dryer.status(datetime.now()) == "available":
+        schedule_dryer = coin_dryer.get_name()
+        context.bot.send_message(chat_id = update.effective_chat.id,
+                                 text = schedule_dryer + " available. No reminder will be set.")
     else:
-        context.bot.send_message(chat_id=update.effective_chat.id,
-                                 text=schedule_dryer + " available. No reminder will be set.")
-
+        if coin_dryer_notifications_queue.count(update.effective_chat.id) < 1:
+            coin_dryer_notifications_queue.append(update.effective_chat.id)
+        context.bot.send_message(chat_id = update.effective_chat.id,
+                                 text = "Laundrobot will alert you when Coin Dryer is available.")
 
 # Can add more stuff if needed
 # To change the status of appliance by messaging the bot
@@ -277,27 +438,66 @@ def status(update, context):
     msg = update.message.text
 
     # check 4 digit number
-    if (len(msg) == 4 and int(msg) <= 1111):
-        coin_dryer_status = int(msg[0])
-        qr_dryer_status = int(msg[1])
-        qr_washer_status = int(msg[2])
-        coin_washer_status = int(msg[3])
+    if (len(msg) == 2 and int(msg) <= 41):
 
-        if coin_dryer_status == 1:
-            coin_dryer.start_time = datetime.now()
-        if qr_dryer_status == 1:
-            qr_dryer.start_time = datetime.now()
-        if qr_washer_status == 1:
-            qr_washer.start_time = datetime.now()
-        if coin_washer_status == 1:
-            coin_washer.start_time = datetime.now()
+        # Applies to coin dryer
+        if int(msg[0]) == 1:
+            if int(msg[1]) == 1:
+                coin_dryer.last_close_time = datetime.now()
+            elif int(msg[1]) == 0:
+                coin_dryer.last_open_time = datetime.now()
+                # Trigger reminder if needed
+                for i in coin_dryer_notifications_queue:
+                    msg = "Reminder: " + coin_dryer.get_name() + " is available."
+                    updater.bot.send_message(chat_id = i, text = msg)
+                coin_dryer_notifications_queue.clear()
+
+        # Applies to qr dryer
+        elif int(msg[0]) == 2:
+            if int(msg[1]) == 1:
+                qr_dryer.last_close_time = datetime.now()
+            elif int(msg[1]) == 0:
+                qr_dryer.last_open_time = datetime.now()
+                # Trigger reminder if needed
+                for i in qr_dryer_notifications_queue:
+                    msg = "Reminder: " + qr_dryer.get_name() + " is available."
+                    updater.bot.send_message(chat_id = i, text = msg)
+                qr_dryer_notifications_queue.clear()
+
+        # Applies to qr washer
+        elif int(msg[0]) == 3:
+            if int(msg[1]) == 1:
+                qr_washer.last_close_time = datetime.now()
+            elif int(msg[1]) == 0:
+                qr_washer.last_open_time = datetime.now()
+                # Trigger reminder if needed
+                for i in qr_washer_notifications_queue:
+                    msg = "Reminder: " + qr_washer.get_name() + " is available."
+                    updater.bot.send_message(chat_id = i, text = msg)
+                qr_washer_notifications_queue.clear()
+
+        # Applies to coin washer
+        elif int(msg[0]) == 4:
+            if int(msg[1]) == 1:
+                coin_washer.last_close_time = datetime.now()
+            elif int(msg[1]) == 0:
+                coin_washer.last_open_time = datetime.now()
+                # Trigger reminder if needed
+                for i in coin_washer_notifications_queue:
+                    msg = "Reminder: " + coin_washer.get_name() + " is available."
+                    updater.bot.send_message(chat_id = i, text = msg)
+                coin_washer_notifications_queue.clear()
 
     # reset timers
     if msg == "reset status":
-        coin_dryer.start_time = datetime.now() - coin_dryer.DRY_CYCLE
-        qr_dryer.start_time = datetime.now() - qr_dryer.DRY_CYCLE
-        qr_washer.start_time = datetime.now() - qr_washer.WASH_CYCLE
-        coin_washer.start_time = datetime.now() - coin_washer.WASH_CYCLE
+        coin_dryer.last_close_time = datetime.now() - coin_dryer.DRY_CYCLE
+        coin_dryer.last_open_time = datetime.now()
+        qr_dryer.last_close_time = datetime.now() - qr_dryer.DRY_CYCLE
+        qr_dryer.last_open_time = datetime.now()
+        qr_washer.last_close_time = datetime.now() - qr_washer.WASH_CYCLE
+        qr_washer.last_open_time = datetime.now()
+        coin_washer.last_close_time = datetime.now() - coin_washer.WASH_CYCLE
+        coin_washer.last_open_time = datetime.now()
 
 
 # Create and add command handlers
@@ -307,36 +507,52 @@ dispatcher.add_handler(start_handler)
 check_handler = CommandHandler("check", check)
 dispatcher.add_handler(check_handler)
 
+washer_cycle_handler = CommandHandler("washercycle", remind_washer_cycle)
+dispatcher.add_handler(washer_cycle_handler)
+qr_washer_cycle_handler = CommandHandler("qrwashercycle", remind_qr_washer_cycle)
+dispatcher.add_handler(qr_washer_cycle_handler)
+coin_washer_cycle_handler = CommandHandler("coinwashercycle", remind_coin_washer_cycle)
+dispatcher.add_handler(coin_washer_cycle_handler)
+dryer_cycle_handler = CommandHandler("dryercycle", remind_dryer_cycle)
+dispatcher.add_handler(dryer_cycle_handler)
+qr_dryer_cycle_handler = CommandHandler("qrdryercycle", remind_qr_dryer_cycle)
+dispatcher.add_handler(qr_dryer_cycle_handler)
+coin_dryer_cycle_handler = CommandHandler("coindryercycle", remind_coin_dryer_cycle)
+dispatcher.add_handler(coin_dryer_cycle_handler)
+
 washer_handler = CommandHandler("washer", remind_washer)
 dispatcher.add_handler(washer_handler)
-
 qr_washer_handler = CommandHandler("qrwasher", remind_qr_washer)
 dispatcher.add_handler(qr_washer_handler)
-
 coin_washer_handler = CommandHandler("coinwasher", remind_coin_washer)
 dispatcher.add_handler(coin_washer_handler)
-
 dryer_handler = CommandHandler("dryer", remind_dryer)
 dispatcher.add_handler(dryer_handler)
-
 qr_dryer_handler = CommandHandler("qrdryer", remind_qr_dryer)
 dispatcher.add_handler(qr_dryer_handler)
-
-coin_dryer_handler = CommandHandler("coindryer", remind_coin_washer)
+coin_dryer_handler = CommandHandler("coindryer", remind_coin_dryer)
 dispatcher.add_handler(coin_dryer_handler)
 
 status_handler = MessageHandler(Filters.text & ~(Filters.command), status)
 dispatcher.add_handler(status_handler)
+
 
 # Start!
 updater.start_polling()
 updater.idle()
 
 # Bot List of Commands:
-# check - To check washer/dryer availability
-# washer - To remind when any washer becomes available
-# qrwasher - To remind when QR washer becomes available
-# coinwasher - To remind when coin washer becomes available
-# dryer - To remind when any dryer becomes available
-# qrdryer - To remind when QR dryer becomes available
-# coindryer - To remind when coin dryer comes available
+# start - To view all commands
+# check - To check washer/dryer status
+# washercycle - To remind when any washer cycle is completed
+# qrwashercycle - To remind when QR washer cycle is completed
+# coinwashercycle - To remind when coin washer cycle is completed
+# washer - To remind when any washer is available
+# qrwasher - To remind when QR washer is available
+# coinwasher - To remind when coin washer is available
+# dryercycle - To remind when any dryer cycle is completed
+# qrdryercycle - To remind when QR dryer cycle is completed
+# coindryercycle - To remind when coin dryer cycle is completed
+# dryer - To remind when any dryer is available
+# qrdryer - To remind when QR dryer is available
+# coindryer - To remind when coin dryer is available
