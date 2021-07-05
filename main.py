@@ -1,8 +1,9 @@
 # Unused for now
 # import requests - for API calls
 # from telegram_menu import BaseMessage, TelegramMenuSession, NavigationHandler - other types of handlers
-import os
-PORT = int(os.environ.get("PORT", 5000))
+
+# import os
+# PORT = int(os.environ.get("PORT", 5000))
 
 import time, math
 from datetime import datetime, timedelta
@@ -551,10 +552,10 @@ dispatcher.add_handler(status_handler)
 updater.start_polling()
 updater.idle()
 
-updater.start_webhook(listen="0.0.0.0",
-                          port=int(PORT),
-                          url_path=TOKEN)
-updater.bot.setWebhook("https://thawing-garden-54482.herokuapp.com/" + TOKEN)
+# updater.start_webhook(listen="0.0.0.0",
+#                           port=int(PORT),
+#                           url_path=TOKEN)
+# updater.bot.setWebhook("https://thawing-garden-54482.herokuapp.com/" + TOKEN)
 
 
 # Bot List of Commands:
