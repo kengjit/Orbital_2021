@@ -1,6 +1,8 @@
 # Unused for now
 # import requests - for API calls
 # from telegram_menu import BaseMessage, TelegramMenuSession, NavigationHandler - other types of handlers
+import os
+PORT = int(os.environ.get("PORT", 5000))
 
 import time, math
 from datetime import datetime, timedelta
