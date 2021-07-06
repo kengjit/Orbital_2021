@@ -1,4 +1,4 @@
-requests
-python-telegram-bot
-telegram_menu
-paho-mqtt
+requests==2.25.1
+python-telegram-bot==13.3
+telegram_menu==0.3.4
+paho-mqtt==1.5.1
