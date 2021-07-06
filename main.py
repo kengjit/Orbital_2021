@@ -2,6 +2,7 @@
 # import requests - for API calls
 # from telegram_menu import BaseMessage, TelegramMenuSession, NavigationHandler - other types of handlers
 
+import config
 import time, math
 from datetime import datetime, timedelta
 from telegram.ext import Updater, CommandHandler, MessageHandler, run_async, Filters
@@ -11,7 +12,7 @@ import paho.mqtt.client as mqtt
 import logging
 logging.basicConfig(format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s',level = logging.INFO)
 
-TOKEN = ""
+TOKEN = config.TOKEN
 
 # Setting up polling
 updater = Updater(token = TOKEN, use_context = True)
@@ -507,7 +508,6 @@ def status(update, context):
         coin_washer.last_close_time = datetime.now() - coin_washer.WASH_CYCLE
         coin_washer.last_open_time = datetime.now()
 
-
 # Create and add command handlers
 start_handler = CommandHandler("start", start)
 dispatcher.add_handler(start_handler)
@@ -543,7 +543,6 @@ dispatcher.add_handler(coin_dryer_handler)
 
 status_handler = MessageHandler(Filters.text & ~(Filters.command), status)
 dispatcher.add_handler(status_handler)
-
 
 # Start!
 updater.start_polling()
