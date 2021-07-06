@@ -2,9 +2,6 @@
 # import requests - for API calls
 # from telegram_menu import BaseMessage, TelegramMenuSession, NavigationHandler - other types of handlers
 
-# import os
-# PORT = int(os.environ.get("PORT", 5000))
-
 import time, math
 from datetime import datetime, timedelta
 from telegram.ext import Updater, CommandHandler, MessageHandler, run_async, Filters
@@ -14,7 +11,7 @@ import paho.mqtt.client as mqtt
 import logging
 logging.basicConfig(format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s',level = logging.INFO)
 
-TOKEN = "1840357751:AAFe-yBkxyMjh1-qF6PaSxsjV2LWooFpjnU"
+TOKEN = ""
 
 # Setting up polling
 updater = Updater(token = TOKEN, use_context = True)
@@ -551,12 +548,6 @@ dispatcher.add_handler(status_handler)
 # Start!
 updater.start_polling()
 updater.idle()
-
-# updater.start_webhook(listen="0.0.0.0",
-#                           port=int(PORT),
-#                           url_path=TOKEN)
-# updater.bot.setWebhook("https://thawing-garden-54482.herokuapp.com/" + TOKEN)
-
 
 # Bot List of Commands:
 # start - To view all commands

@@ -39,7 +39,7 @@ client.loop_start()
 # print("Log:", "Subscribing to topic", topic)
 # client.subscribe(topic)
 
-message = "31"
+message = "30"
 
 print("Log:", "Publishing to topic", topic)
 client.publish(topic, message)
