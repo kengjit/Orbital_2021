@@ -4,7 +4,6 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <dummy.h> //for esp32
-#include <esp_wpa2.h>
 
 /*********** COMMUNICATION SELECTION ***********/
 ADXL345 adxl_1 = ADXL345();
@@ -30,9 +29,9 @@ int quadrant_count = 0;
 
 /****************** THRESHOLD VALUES ******************/
 /*                                                    */
-int ThresholdX[4] = {20, 20, 20, 20};
-int ThresholdY[4] = {40, 40, 40, 40};
-int ThresholdZ[4] = {240, 240, 240, 240};
+int ThresholdX[4] = {20, 20, 100, 20};
+int ThresholdY[4] = {40, 40, 50, 40};
+//int ThresholdZ[4] = {240, 240, , 240};
 
 /************** DEFINED VARIABLES **************/
 /*                                             */
@@ -50,7 +49,7 @@ void tcaselect (uint8_t i) {
 
 bool is_vibrating(int sensor, int diffX, int diffY, int diffZ)
 {
-  return (diffX > ThresholdX[sensor] && diffY > ThresholdY[sensor] && diffZ > ThresholdZ[sensor]);
+  return (diffX > ThresholdX[sensor] && diffY > ThresholdY[sensor] /*&& diffZ > ThresholdZ[sensor]*/);
 }
 
 bool is_zero(char* string)
@@ -67,8 +66,8 @@ bool is_zero(char* string)
 /************** NETWORK + AWS SETUP **************/
 /*                                               */
 EspMQTTClient client(
-  "dlink-D8EA",
-  "bootl72707",
+  "i",
+  "isaacsng",
   "broker.emqx.io",  // MQTT Broker server ip
   "",   // Can be omitted if not needed
   "",   // Can be omitted if not needed
@@ -86,7 +85,6 @@ void setup() {
   Serial.begin(115200);
   client.enableDebuggingMessages(); // Enable debugging messages sent to serial output
   client.enableHTTPWebUpdater(); // Enable the web updater. User and password default to values of MQTTUsername and MQTTPassword. These can be overrited with enableHTTPWebUpdater("user", "password").
-  client.enableLastWillMessage("laundrobot", "I am going offline");  // You can activate the retain flag by setting the third parameter to true
 
   //*************INITIALIZING FIRST SENSOR*******************************
   tcaselect(0);
