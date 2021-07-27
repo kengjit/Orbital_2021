@@ -37,7 +37,7 @@ class Appliance():
 
 # A subclass of appliance
 class Dryer(Appliance):
-    DRY_CYCLE = timedelta(minutes = 4)
+    DRY_CYCLE = timedelta(minutes = 3)
 
     def __init__(self, name, last_close_time = datetime.now() - timedelta(minutes = 40), last_open_time = datetime.now()):
         super(Dryer, self).__init__(name, last_close_time, last_open_time)
@@ -55,7 +55,7 @@ class Dryer(Appliance):
 
 # A subclass of appliance
 class Washer(Appliance):
-    WASH_CYCLE = timedelta(minutes = 3)
+    WASH_CYCLE = timedelta(minutes = 2)
 
     def __init__(self, name, last_close_time = datetime.now() - timedelta(minutes = 30), last_open_time = datetime.now()):
         super(Washer, self).__init__(name, last_close_time, last_open_time)
